@@ -14,10 +14,28 @@ This repository is under construction and will be completed by Oct. 2020.
 - To deal with the inherent and inevitable motion ambiguities of robot's state estimation.
   - By *multiple various resolution of range images*. 
 
+## Features 
+1. Implicit alleviatation of motion ambiguities  
+  - TBA: Multi res range images 
+  - TBA: shortend tree trunk 
 
-## Static map construction examples
-- TBA
+2. Ok for any vertical fov
+  - refer the below examples 
+  
+3. (TO DO) a novel static map quality metric and auto-stop   
 
+
+## Static map construction examples on various datasets
+  - Velodyne 32 ray ([NAVER LABS - Pangyo](https://challenge.naverlabs.com/))
+    - TBA
+  - Velodyne 32 ray ([Oxford Radar RobotCar dataset](https://oxford-robotics-institute.github.io/radar-robotcar-dataset/documentation))
+    - TBA
+  - Velodyne 64 ray ([KITTI](http://www.cvlibs.net/datasets/kitti/eval_odometry.php))
+    - TBA
+  - Ouster 64 ray ([MulRan](https://sites.google.com/view/mulran-pr/home))
+    - TBA
+    
+    
 ## How to use? - Matlab 
 - TBA
 
