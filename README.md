@@ -7,7 +7,7 @@ This repository is under construction and will be completed by Oct. 2020.
 
 ## What is removert?
 - Goal: **static map construction** in the wild. 
-- The name is from the abbreviation of our title "***Remov***e-then-re***vert***" (IROS 2020): [paper](https://irap.kaist.ac.kr/publications/gskim-2020-iros.pdf), [presentation](todo)
+- The name is from the abbreviation of our title "***Remov***e-then-re***vert***" (IROS 2020): [paper](https://irap.kaist.ac.kr/publications/gskim-2020-iros.pdf), [video](https://youtu.be/M9PEGi5fAq8)
 
 
 ## Why removert?
