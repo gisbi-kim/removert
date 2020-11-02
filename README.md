@@ -2,7 +2,7 @@
 
 ## What is removert?
 - Static map construction in the wild. 
-- A dyanmic point removing tool by constructing a static map
+- A dynamic points removing tool by constructing a static map
 - The name is from the abbreviation of our title "***Remov***e-then-re***vert***" (IROS 2020): [paper](https://irap.kaist.ac.kr/publications/gskim-2020-iros.pdf), [video](https://youtu.be/M9PEGi5fAq8)
 
 ## What can we do using removert? 
