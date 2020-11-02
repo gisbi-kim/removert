@@ -16,8 +16,7 @@
 
 ## Preparations
 - Step 1: Get a set of LiDAR scans and corresponding poses by running any open source LiDAR odometry or SLAM algorithm (e.g., [odometry_saver](https://github.com/SMRT-AIST/interactive_slam/wiki/Example2))
-- Step 2: Make a pair of a scan's point cloud (e.g., binary format as KITTI) and a corresponding pose using associated timestamps. We note that you need to save a scan as a binary format as KITTI and the pose file as a single text file where SE(3) poses are written line-by-line (12 numbers for a single line) 
-- DONE! follow the below example. 
+- Step 2: Make a pair of a scan's point cloud and a corresponding pose using associated timestamps. We note that you need to save a scan as a binary format as KITTI and the pose file as a single text file where SE(3) poses are written line-by-line (12 numbers for a single line), which is also the equivalent format as KITTI odometry's ground truth pose txt file.
 
 ## Requirements 
 - Based on C++17
@@ -25,7 +24,7 @@
 - FYI: We uses ROS's parameter parser for the convenience, despite no topic flows within our system (our repository currently runs at offline on the pre-prepared scans saved on a HDD or a SSD). But the speed is fast (over 10Hz for a single removing) and plan to extend to real-time slam integration in future.
 
 ## How to use 
-- First the compile the source 
+- First, compile the source 
 ```
 $ mkdir -p ~/catkin/removert_ws/src
 $ cd ~/catkin/removert_ws/src
