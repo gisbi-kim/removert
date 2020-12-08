@@ -4,6 +4,8 @@
 RosParamServer::RosParamServer()
 : nh(nh_super), ROSimg_transporter_(nh)
 {
+    nh.param<bool>("removert/isScanFileKITTIFormat", isScanFileKITTIFormat_, true);
+
     // for visualization 
  
     scan_rimg_msg_publisher_ = ROSimg_transporter_.advertise("/scan_rimg_single", 10);

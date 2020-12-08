@@ -1,0 +1,21 @@
+<launch>
+
+    <arg name="project" default="removert"/>
+
+    <!--- Run Rviz-->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find removert)/launch/removert_visualization.rviz" />
+
+    <!-- Parameters -->
+    <rosparam file="$(find removert)/config/params_kitti.yaml" command="load" />
+
+    <!--- Removert -->
+    <!-- <node pkg="$(arg project)" type="$(arg project)_removert"   name="$(arg project)_removert"    output="screen" 	respawn="true"/> -->
+    <node pkg="$(arg project)" type="$(arg project)_removert"   name="$(arg project)_removert"   output="screen"/>
+
+    <!--- Run Rqt (show range images-->
+    <!-- <include file="$(find lio_sam)/launch/include/module_rviz.launch" /> -->
+
+    <!--- Run Rviz-->
+    <!-- <include file="$(find lio_sam)/launch/include/module_rviz.launch" /> -->
+
+</launch>

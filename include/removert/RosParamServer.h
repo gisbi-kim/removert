@@ -31,6 +31,8 @@ public:
     Eigen::Matrix4d kSE3MatExtrinsicPoseBasetoLiDAR;
 
     // sequence bin files
+    bool isScanFileKITTIFormat_;
+
     std::string sequence_scan_dir_;
     std::vector<std::string> sequence_scan_names_;
     std::vector<std::string> sequence_scan_paths_;

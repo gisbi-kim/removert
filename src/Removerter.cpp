@@ -135,14 +135,18 @@ void Removerter::parseValidScanInfo( void )
 void Removerter::readValidScans( void )
 // for target range of scan idx 
 {
-    const int cout_interval {100};
+    const int cout_interval {10};
     int cout_counter {0};
 
     for(auto& _scan_path : sequence_valid_scan_paths_) 
     {
         // read bin files and save  
         pcl::PointCloud<PointType>::Ptr points (new pcl::PointCloud<PointType>); // pcl::PointCloud Ptr is a shared ptr so this points will be automatically destroyed after this function block (because no others ref it).
-        readBin(_scan_path, points);
+        if( isScanFileKITTIFormat_ ) {
+            readBin(_scan_path, points); // For KITTI (.bin)
+        } else {
+            pcl::io::loadPCDFile<PointType> (_scan_path, *points); // saved from SC-LIO-SAM's pcd binary (.pcd)
+        }
 
         // pcdown
         pcl::VoxelGrid<PointType> downsize_filter;
@@ -159,8 +163,8 @@ void Removerter::readValidScans( void )
         cout_counter++;
         if (remainder(cout_counter, cout_interval) == 0) {
             cout << _scan_path << endl;
-            cout << "Read KTTI point cloud with " << points->points.size() << " points." << endl;
-            cout << "downsampled KTTI point cloud with " << downsampled_points->points.size() << " points." << endl;
+            cout << "Read a pointcloud with " << points->points.size() << " points." << endl;
+            cout << "downsample the pointcloud: " << downsampled_points->points.size() << " points." << endl;
             cout << " ... (display every " << cout_interval << " readings) ..." << endl;
         }
     }
@@ -326,7 +330,7 @@ void Removerter::makeGlobalMap( void )
     if( kFlagSaveMapPointcloud ) {
         // in global coord
         std::string static_global_file_name = save_pcd_directory_ + "OriginalNoisyMapGlobal.pcd";
-        pcl::io::savePCDFileASCII(static_global_file_name, *map_global_curr_);
+        pcl::io::savePCDFileBinary(static_global_file_name, *map_global_curr_);
         ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (global coord): " << static_global_file_name << "\033[0m");   
 
         // in local coord (i.e., base_node_idx == 0 means a start idx is the identity pose)
@@ -334,7 +338,7 @@ void Removerter::makeGlobalMap( void )
         pcl::PointCloud<PointType>::Ptr map_local_curr (new pcl::PointCloud<PointType>);
         transformGlobalMapToLocal(map_global_curr_, base_node_idx, map_local_curr);
         std::string static_local_file_name = save_pcd_directory_ + "OriginalNoisyMapLocal.pcd";
-        pcl::io::savePCDFileASCII(static_local_file_name, *map_local_curr);
+        pcl::io::savePCDFileBinary(static_local_file_name, *map_local_curr);
         ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (local coord): " << static_local_file_name << "\033[0m");   
     }
     // make tree (for fast ball search for the projection to make a map range image later)
@@ -453,12 +457,12 @@ void Removerter::saveCurrentStaticAndDynamicPointCloudGlobal( void )
 
     // dynamic 
     std::string dyna_file_name = map_dynamic_save_dir_ + "/DynamicMapMapsideGlobalResX" + curr_res_alpha_str + ".pcd";
-    pcl::io::savePCDFileASCII(dyna_file_name, *map_global_curr_dynamic_);
+    pcl::io::savePCDFileBinary(dyna_file_name, *map_global_curr_dynamic_);
     ROS_INFO_STREAM("\033[1;32m -- a pointcloud is saved: " << dyna_file_name << "\033[0m");   
 
     // static 
     std::string static_file_name = map_static_save_dir_ + "/StaticMapMapsideGlobalResX" + curr_res_alpha_str + ".pcd";
-    pcl::io::savePCDFileASCII(static_file_name, *map_global_curr_static_);
+    pcl::io::savePCDFileBinary(static_file_name, *map_global_curr_static_);
     ROS_INFO_STREAM("\033[1;32m -- a pointcloud is saved: " << static_file_name << "\033[0m");   
 } // saveCurrentStaticAndDynamicPointCloudGlobal
 
@@ -474,14 +478,14 @@ void Removerter::saveCurrentStaticAndDynamicPointCloudLocal( int _base_node_idx 
     pcl::PointCloud<PointType>::Ptr map_local_curr_dynamic (new pcl::PointCloud<PointType>);
     transformGlobalMapToLocal(map_global_curr_dynamic_, _base_node_idx, map_local_curr_dynamic);
     std::string dyna_file_name = map_dynamic_save_dir_ + "/DynamicMapMapsideLocalResX" + curr_res_alpha_str + ".pcd";
-    pcl::io::savePCDFileASCII(dyna_file_name, *map_local_curr_dynamic);
+    pcl::io::savePCDFileBinary(dyna_file_name, *map_local_curr_dynamic);
     ROS_INFO_STREAM("\033[1;32m -- a pointcloud is saved: " << dyna_file_name << "\033[0m");   
 
     // static 
     pcl::PointCloud<PointType>::Ptr map_local_curr_static (new pcl::PointCloud<PointType>);
     transformGlobalMapToLocal(map_global_curr_static_, _base_node_idx, map_local_curr_static);
     std::string static_file_name = map_static_save_dir_ + "/StaticMapMapsideLocalResX" + curr_res_alpha_str + ".pcd";
-    pcl::io::savePCDFileASCII(static_file_name, *map_local_curr_static);
+    pcl::io::savePCDFileBinary(static_file_name, *map_local_curr_static);
     ROS_INFO_STREAM("\033[1;32m -- a pointcloud is saved: " << static_file_name << "\033[0m");   
 
 } // saveCurrentStaticAndDynamicPointCloudLocal
@@ -759,7 +763,7 @@ void Removerter::saveStaticScan( int _scan_idx, const pcl::PointCloud<PointType>
     std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
     std::string file_name = scan_static_save_dir_ + "/" + file_name_orig + ".pcd";
     ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
-    pcl::io::savePCDFileASCII(file_name, *_ptcloud);
+    pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveStaticScan
 
 
@@ -768,7 +772,7 @@ void Removerter::saveDynamicScan( int _scan_idx, const pcl::PointCloud<PointType
     std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
     std::string file_name = scan_dynamic_save_dir_ + "/" + file_name_orig + ".pcd";
     ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
-    pcl::io::savePCDFileASCII(file_name, *_ptcloud);
+    pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveDynamicScan
 
 
@@ -799,7 +803,7 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
 
         // global
         std::string local_file_name = map_static_save_dir_ + "/StaticMapScansideMapGlobal.pcd";
-        pcl::io::savePCDFileASCII(local_file_name, *map_global_static_scans_merged_to_verify);
+        pcl::io::savePCDFileBinary(local_file_name, *map_global_static_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
         // local 
@@ -807,7 +811,7 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         int base_node_idx = base_node_idx_;
         transformGlobalMapToLocal(map_global_static_scans_merged_to_verify, base_node_idx, map_local_static_scans_merged_to_verify);
         std::string global_file_name = map_static_save_dir_ + "/StaticMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileASCII(global_file_name, *map_local_static_scans_merged_to_verify);
+        pcl::io::savePCDFileBinary(global_file_name, *map_local_static_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
     } 
 
@@ -820,7 +824,7 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
 
         // global
         std::string local_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapGlobal.pcd";
-        pcl::io::savePCDFileASCII(local_file_name, *map_global_dynamic_scans_merged_to_verify);
+        pcl::io::savePCDFileBinary(local_file_name, *map_global_dynamic_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
         // local 
@@ -828,7 +832,7 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         int base_node_idx = base_node_idx_;
         transformGlobalMapToLocal(map_global_dynamic_scans_merged_to_verify, base_node_idx, map_local_dynamic_scans_merged_to_verify);
         std::string global_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileASCII(global_file_name, *map_local_dynamic_scans_merged_to_verify);
+        pcl::io::savePCDFileBinary(global_file_name, *map_local_dynamic_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
     } 
 } // saveMapPointcloudByMergingCleanedScans

@@ -10,8 +10,8 @@
 - We can easily parse dynamic points 
 
 ## Example
-- Video 1: [KITTI 09](https://youtu.be/V6OcdNVQRwg) with [SuMa poses](http://jbehley.github.io/projects/surfel_mapping/)
-- Video 2: [MulRan dataset](https://sites.google.com/view/mulran-pr/home) (TODO) 
+- [Video 1: KITTI 09](https://youtu.be/V6OcdNVQRwg) with [SuMa poses](http://jbehley.github.io/projects/surfel_mapping/)
+- [Video 2: MulRan dataset with poses from SC-LIO-SAM](https://youtu.be/UiYYrPMcIRU)
 <p align="center"><img src="docs/removert.png" width=900></p>
 
 ## Preparations
@@ -37,7 +37,10 @@ $ source devel/setup.bash
 
 - Then, you can start the *Removert*
 ```
-$ roslaunch removert run.launch
+$ roslaunch removert run_kitti.launch # if you use KITTI dataset 
+ or
+$ roslaunch removert run_scliosam.launch # see this tutorial: https://youtu.be/UiYYrPMcIRU
+
 ```
 
 - (Optional) we supports Matlab tools to visulaize comparasions of original/cleaned maps (see tools/matlab).

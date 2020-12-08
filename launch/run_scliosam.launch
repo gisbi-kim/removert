@@ -6,7 +6,7 @@
     <node pkg="rviz" type="rviz" name="rviz" args="-d $(find removert)/launch/removert_visualization.rviz" />
 
     <!-- Parameters -->
-    <rosparam file="$(find removert)/config/params.yaml" command="load" />
+    <rosparam file="$(find removert)/config/params_mulran_scliosam.yaml" command="load" />
 
     <!--- Removert -->
     <!-- <node pkg="$(arg project)" type="$(arg project)_removert"   name="$(arg project)_removert"    output="screen" 	respawn="true"/> -->

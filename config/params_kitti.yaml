@@ -4,11 +4,13 @@ removert:
   # - KITTI 09 [downsample_voxel_size: 0.05m, skips: 5, start idx: 1300, end idx: 1600] 
   # - KITTI 03 [downsample_voxel_size: 0.05m, skips: 5, start idx: 0, end idx: 150] 
 
+  # 
+  isScanFileKITTIFormat: true
 
   # @ save option 
   saveMapPCD: true 
   saveCleanScansPCD: true
-  save_pcd_directory: "/home/user/removert/results/" # replace to your path (please use an absolute path)
+  save_pcd_directory: "/home/user/Desktop/data/kitti09/removert/results/" # replace to your path (please use an absolute path)
 
 
   # @ sequence info (replace to your paths) 
@@ -28,12 +30,16 @@ removert:
         0.0,        0.0,        0.0,        1.0]
   # @ If you use the lidar-itself odometry (e.g., from A-LOAM or using odometry saver https://github.com/SMRT-AIST/interactive_slam/wiki/Example2), 
   #   use the below identity matrix, not the above KITTI pose setting (w.r.t the camera).
-  # ExtrinsicLiDARtoPoseBase: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1]
+  # ExtrinsicLiDARtoPoseBase: [1.0, 0.0, 0.0, 0.0, 
+  #                            0.0, 1.0, 0.0, 0.0, 
+  #                            0.0, 0.0, 1.0, 0.0, 
+  #                            0.0, 0.0, 0.0, 1.0]
 
 
   # @ Sampling nodes 
   use_keyframe_gap: true 
   keyframe_gap: 5 # i.e., 5 means every 5 frames // 5 is recommended for fast removing while preserving the static map's quality # if you make all scans clean, use this value = 1
+  # keyframe_gap: 2 # i.e., 5 means every 5 frames // 5 is recommended for fast removing while preserving the static map's quality # if you make all scans clean, use this value = 1
 
   # use_keyframe_meter: false # TODO
   # keyframe_meter: 2 # TODO, e.g., every 2 meters (using the given pose relative translations) 
@@ -44,7 +50,7 @@ removert:
   #   it means we parse scans every <keyframe_gap> or <keyframe_gap_meter> meter within the idx range [start_idx, end_idx] 
   #   but for a single batch, < 100 scans are recommended for the computation speed.
   start_idx: 1300 # change this
-  end_idx: 1500 # change this
+  end_idx: 1600 # change this
 
 
   # @ auto repeat
@@ -58,18 +64,26 @@ removert:
   # the below is actually magnifier ratio (i.e., 5 means x5 resolution, the x1 means 1 deg x 1 deg per pixel)
   # - recommend to use the first removing resolution's magnifier ratio should meet the seonsor vertical fov / number of rays 
   #     - e.g., HDL 64E of KITTI dataset -> appx 25 deg / 64 ray ~ 0.4 deg per pixel -> the magnifier ratio = 1/0.4 = 2.5
+  #     - e.g., Ouster OS1-64 of MulRan dataset -> appx 45 deg / 64 ray ~ 0.7 deg per pixel -> the magnifier ratio = 1/0.7 = 1.4
   # - recommend to use the first reverting resolution's magnifier ratio should lied in 1.0 to 1.5
-  # remove_resolution_list: [2.5, 2.0, 1.5] 
-  remove_resolution_list: [2.5, 1.5] 
+  remove_resolution_list: [2.5, 2.0, 1.5] # for HDL 64E of KITTI dataset 
+  # remove_resolution_list: [1.4, 1.1] # for Ouster OS1-64 of MulRan dataset
   revert_resolution_list: [1.0, 0.9, 0.8, 0.7] # TODO
 
 
   # @ Removert params 
   # about density 
   downsample_voxel_size: 0.05 # user parameter but recommend to use 0.05 to make sure an enough density (this value is related to the removing resolution's expected performance)
-  # about Static sensitivity
+
+  # about Static sensitivity (you need to tune these below two values, depends on the environement)
+  # - if you use a raw scan 
   num_nn_points_within: 2 # how many - using higher, more strict static 
   dist_nn_points_within: 0.1 # meter - using smaller, more strict static 
+
+  # about Static sensitivity (SC-LIO-SAM's feature cloud)
+  # - if you use a SC-LIO-SAM's feature cloud
+  # num_nn_points_within: 2 # how many - using higher, more strict static 
+  # dist_nn_points_within: 0.2 # meter - using smaller, more strict static 
 
 
   # @ For faster

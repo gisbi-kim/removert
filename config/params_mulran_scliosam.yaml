@@ -1,0 +1,86 @@
+removert:
+
+  # 
+  isScanFileKITTIFormat: false
+
+  # @ save option 
+  saveMapPCD: true 
+  saveCleanScansPCD: true
+  save_pcd_directory: "/home/user/Desktop/data/riverside01/removert/results/" # replace to your path (please use an absolute path)
+
+
+  # @ sequence info (replace to your paths) 
+  #   please follow the KITTI odometry dataset's scan and pose formats (i.e., make them .bin and line-by-line corresponding se3 poses composed of 12 numbers)
+  sequence_scan_dir: "/home/user/Desktop/data/riverside01/sc-lio-sam/Scans/"
+  sequence_pose_path: "/home/user/Desktop/data/riverside01/sc-lio-sam/optimized_poses.txt"
+
+  sequence_vfov: 50 # including upper and lower fovs, 
+                    # for example, KITTI's HDL64E is 2 + 24.9 ~ 27 deg. (so 25 + 25 = 50 is recommended because it is enough)
+                    #            , MulRan's Ouster OS1-64 has +22.5 to -22.5 deg. (so 22.5 + 22.5 = 45 < 50 is also enough and able to cover the all vfov)
+  sequence_hfov: 360 # generally for targetting scanning LiDAR but a lidar having restricted hfov also just can use the 360 (because no point regions are considered in the algorithm)
+
+
+  # @ Sequence's BaseToLidar info
+  # @ If you use the lidar-itself odometry (e.g., from SC-LIO-SAM's pose saver, the pose is from lidar itself so use the identity)
+  ExtrinsicLiDARtoPoseBase: [1.0, 0.0, 0.0, 0.0, 
+                             0.0, 1.0, 0.0, 0.0, 
+                             0.0, 0.0, 1.0, 0.0, 
+                             0.0, 0.0, 0.0, 1.0]
+
+
+  # @ Sampling nodes 
+  use_keyframe_gap: true 
+  keyframe_gap: 2 # if you use SC-LIO-SAM's poses, the nodes are already keyframe (i.e., spatially apart enough)
+
+  # use_keyframe_meter: false # TODO
+  # keyframe_meter: 2 # TODO, e.g., every 2 meters (using the given pose relative translations) 
+
+
+  # @ target region (scan idx range) when clean_for_all_scan is false 
+  #   means the removeter runs on all scans in a specified regions of a sequence 
+  #   it means we parse scans every <keyframe_gap> or <keyframe_gap_meter> meter within the idx range [start_idx, end_idx] 
+  #   but for a single batch, < 100 scans are recommended for the computation speed.
+  start_idx: 50 # change this 
+  end_idx: 200 # change this
+
+
+  # @ auto repeat
+  #   means the removeter runs on all scans in a sequence 
+  clean_for_all_scan: false # default is false
+  batch_size: 150
+  valid_ratio_to_save: 0.75 # i.e., no save cleaned scans located at the boundaries of a batch  
+
+
+  # @ Range image resolution
+  # the below is actually magnifier ratio (i.e., 5 means x5 resolution, the x1 means 1 deg x 1 deg per pixel)
+  # - recommend to use the first removing resolution's magnifier ratio should meet the seonsor vertical fov / number of rays 
+  #     - e.g., HDL 64E of KITTI dataset -> appx 25 deg / 64 ray ~ 0.4 deg per pixel -> the magnifier ratio = 1/0.4 = 2.5
+  #     - e.g., Ouster OS1-64 of MulRan dataset -> appx 45 deg / 64 ray ~ 0.7 deg per pixel -> the magnifier ratio = 1/0.7 = 1.4
+  # - recommend to use the first reverting resolution's magnifier ratio should lied in 1.0 to 1.5
+  # remove_resolution_list: [2.5, 2.0, 1.5] # for HDL 64E of KITTI dataset 
+  remove_resolution_list: [1.4, 1.1] # for Ouster OS1-64 of MulRan dataset
+  revert_resolution_list: [1.0, 0.9, 0.8, 0.7] # TODO
+
+
+  # @ Removert params 
+  # about density 
+  downsample_voxel_size: 0.05 # user parameter but recommend to use 0.05 to make sure an enough density (this value is related to the removing resolution's expected performance)
+
+  # about Static sensitivity (you need to tune these below two values, depends on the environement)
+  # - if you use a raw scan 
+  # num_nn_points_within: 2 # how many - using higher, more strict static 
+  # dist_nn_points_within: 0.1 # meter - using smaller, more strict static (if you use a raw scan, use small such as 0.1)
+
+  # about Static sensitivity (SC-LIO-SAM's feature cloud)
+  # - if you use a SC-LIO-SAM's feature cloud
+  num_nn_points_within: 2 # how many - using higher, more strict static 
+  dist_nn_points_within: 0.2 # meter - using smaller, more strict static (if you use a already downsampled feature cloud, use quite large value such as > 0.2 )
+
+
+  # @ For faster
+  num_omp_cores: 16 # for faster map points projection (to make a map range image)
+
+  
+  # @ For visualization of range images (rviz -d removert_visualization.rviz)
+  rimg_color_min: 0.0 # meter
+  rimg_color_max: 20.0 # meter

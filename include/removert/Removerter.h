@@ -52,7 +52,7 @@ private:
 
     const int base_node_idx_ = 0;
 
-    unsigned long kPauseTimeForClearStaticScanVisualization = 10000; // microsec
+    unsigned long kPauseTimeForClearStaticScanVisualization = 1000; // microsec
 
     // NOT recommend to use for under 5 million points map input (becausing not-using is just faster)
     const bool kUseSubsetMapCloud = false; 
