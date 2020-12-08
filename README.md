@@ -15,7 +15,7 @@
 <p align="center"><img src="docs/removert.png" width=900></p>
 
 ## Preparations
-- Step 1: Get a set of LiDAR scans and corresponding poses by running any open source LiDAR odometry or SLAM algorithm (e.g., [odometry_saver of SC-LIO-SAM](https://github.com/gisbi-kim/SC-LIO-SAM#applications))
+- Step 1: Get a set of LiDAR scans and corresponding poses by running any open source LiDAR odometry or SLAM algorithm (e.g., [pose-and-scan saver of SC-LIO-SAM](https://github.com/gisbi-kim/SC-LIO-SAM#applications))
 - Step 2: Make a pair of a scan's point cloud and a corresponding pose using associated timestamps. We note that you need to save a scan as a binary format as KITTI and the pose file as a single text file where SE(3) poses are written line-by-line (12 numbers for a single line), which is also the equivalent format as KITTI odometry's ground truth pose txt file.
 
 ## Requirements 
