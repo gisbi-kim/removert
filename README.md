@@ -72,8 +72,8 @@ paulgkim@kaist.ac.kr
 - Full sequence cleaned-scan saver by automatically iterating batches (because using 50-100 scans for a single batch is recommended for computation speed)
 - Adding revert steps (I think certainly removing dynamic points is generally more worthy for many applications, so reverting step is omitted currently)
 - Automatically parse dynamic segments from the dynamic points in a scan (e.g., using DBSCAN on dynamic points in a scan)
-- Exmaples from MulRan dataset (for showing removert's availability for various LiDAR configurations)  
-- (scan, pose) pair saver using SC-LeGO-LOAM, which includes a loop closing that can make a globally consistent map.
+- [x] Exmaples from MulRan dataset (for showing removert's availability for various LiDAR configurations) — see this [tutorial](https://youtu.be/UiYYrPMcIRU) 
+- [x] (scan, pose) pair saver using SC-LeGO-LOAM or [SC-LIO-SAM](https://github.com/gisbi-kim/SC-LIO-SAM#applications), which includes a loop closing that can make a globally consistent map. — see this [tutorial](https://youtu.be/UiYYrPMcIRU)
 - Examples from the arbitrary datasets using the above input data pair saver.
 - Providing a SemanticKITTI (as a truth) evaluation tool (i.e., calculating the number of points of TP, FP, TN, and FN) 
 - (Not certain now) Changing all floats to double
