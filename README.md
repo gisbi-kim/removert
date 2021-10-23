@@ -46,6 +46,13 @@ $ roslaunch removert run_scliosam.launch # see this tutorial: https://youtu.be/U
 - (Optional) we supports Matlab tools to visulaize comparasions of original/cleaned maps (see tools/matlab).
 
 
+## Further Improvements 
+- We propose combining recent deep learning-based dynamic removal (e.g., [LiDAR-MOS](https://github.com/PRBonn/LiDAR-MOS)) and our method for better map cleaning 
+    - Deep learning-based removal could run online and good for proactive removal of bunch of points. 
+    - Removert currently runs offline but good at finer cleaning for the remained 3D points after LiDAR-MOS ran.     
+- A [tutorial video](https://youtu.be/zWuoqtDofsE) and an example result for the KITTI 01 sequence: 
+<p align="center"><img src="docs/fusion.png" width=550></p>
+
 ## Contact 
 ```
 paulgkim@kaist.ac.kr
