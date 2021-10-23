@@ -40,7 +40,6 @@ $ source devel/setup.bash
 $ roslaunch removert run_kitti.launch # if you use KITTI dataset 
  or
 $ roslaunch removert run_scliosam.launch # see this tutorial: https://youtu.be/UiYYrPMcIRU
-
 ```
 
 - (Optional) we supports Matlab tools to visulaize comparasions of original/cleaned maps (see tools/matlab).
