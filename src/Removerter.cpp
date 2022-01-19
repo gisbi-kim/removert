@@ -32,11 +32,14 @@ Removerter::Removerter()
     nh.param<int>("removert/num_nn_points_within", kNumKnnPointsToCompare, 3); // using higher, more strict static 
     nh.param<float>("removert/dist_nn_points_within", kScanKnnAndMapKnnAvgDiffThreshold, 0.1); // using smaller, more strict static 
 
-    if( save_pcd_directory_.substr(save_pcd_directory_.size()-1, 1) != std::string("/") )
+    if (save_pcd_directory_.back() != '/')
         save_pcd_directory_ = save_pcd_directory_ + "/";
+
     fsmkdir(save_pcd_directory_);
-    scan_static_save_dir_ = save_pcd_directory_ + "scan_static"; fsmkdir(scan_static_save_dir_);
-    scan_dynamic_save_dir_ = save_pcd_directory_ + "scan_dynamic"; fsmkdir(scan_dynamic_save_dir_);
+    if (!isDumpHdlGraphSlamFormat_) {
+        scan_static_save_dir_ = save_pcd_directory_ + "scan_static"; fsmkdir(scan_static_save_dir_);
+        scan_dynamic_save_dir_ = save_pcd_directory_ + "scan_dynamic"; fsmkdir(scan_dynamic_save_dir_);
+    }
     map_static_save_dir_ = save_pcd_directory_ + "map_static"; fsmkdir(map_static_save_dir_);
     map_dynamic_save_dir_ = save_pcd_directory_ + "map_dynamic"; fsmkdir(map_dynamic_save_dir_);
 
@@ -60,6 +63,7 @@ Removerter::Removerter()
 
 void Removerter::allocateMemory()
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     map_global_orig_.reset(new pcl::PointCloud<PointType>());
 
     map_global_curr_.reset(new pcl::PointCloud<PointType>());
@@ -89,45 +93,53 @@ Removerter::~Removerter(){}
 
 void Removerter::parseValidScanInfo( void )
 {
-    int num_valid_parsed {0};
-    float movement_counter {0.0}; 
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
+    if (isDumpHdlGraphSlamFormat_) {
+        sequence_valid_scan_paths_ = sequence_scan_paths_;
+        sequence_valid_scan_names_ = sequence_scan_names_;
+        scan_poses_ = sequence_scan_poses_; // used for local2global
+        scan_inverse_poses_ = sequence_scan_inverse_poses_; // used for global2local
+    } else {
+        int num_valid_parsed {0};
+        float movement_counter {0.0};
 
-    for(int curr_idx=0; curr_idx < int(sequence_scan_paths_.size()); curr_idx++) 
-    {
-        // check the scan idx within the target idx range 
-        if(curr_idx > end_idx_ || curr_idx < start_idx_) {
-            curr_idx++;
-            continue;
-        }
-
-        // check enough movement occured (e.g., parse every 2m)
-        if(use_keyframe_gap_) {
-            if( remainder(num_valid_parsed, keyframe_gap_) != 0 ) {
-                num_valid_parsed++;
+        for(int curr_idx=0; curr_idx < int(sequence_scan_paths_.size()); curr_idx++)
+        {
+            // check the scan idx within the target idx range
+            if(curr_idx > end_idx_ || curr_idx < start_idx_) {
+                curr_idx++;
                 continue;
             }
-        }
-        if(use_keyframe_meter_) {
-            if( 0 /*TODO*/ ) {
-                // TODO using movement_counter
+
+            // check enough movement occured (e.g., parse every 2m)
+            if(use_keyframe_gap_) {
+                if( remainder(num_valid_parsed, keyframe_gap_) != 0 ) {
+                    num_valid_parsed++;
+                    continue;
+                }
             }
+            if(use_keyframe_meter_) {
+                if( 0 /*TODO*/ ) {
+                    // TODO using movement_counter
+                }
+            }
+
+            // save the info (reading scan bin is in makeGlobalMap)
+            sequence_valid_scan_paths_.emplace_back(sequence_scan_paths_.at(curr_idx));
+            sequence_valid_scan_names_.emplace_back(sequence_scan_names_.at(curr_idx));
+
+            scan_poses_.emplace_back(sequence_scan_poses_.at(curr_idx)); // used for local2global
+            scan_inverse_poses_.emplace_back(sequence_scan_inverse_poses_.at(curr_idx)); // used for global2local
+
+            //
+            num_valid_parsed++;
         }
 
-        // save the info (reading scan bin is in makeGlobalMap) 
-        sequence_valid_scan_paths_.emplace_back(sequence_scan_paths_.at(curr_idx));
-        sequence_valid_scan_names_.emplace_back(sequence_scan_names_.at(curr_idx));
-
-        scan_poses_.emplace_back(sequence_scan_poses_.at(curr_idx)); // used for local2global
-        scan_inverse_poses_.emplace_back(sequence_scan_inverse_poses_.at(curr_idx)); // used for global2local
-
-        // 
-        num_valid_parsed++;
-    }
-
-    if(use_keyframe_gap_) {
-        ROS_INFO_STREAM("\033[1;32m Total " << sequence_valid_scan_paths_.size()
-            << " nodes are used from the index range [" << start_idx_ << ", " << end_idx_ << "]" 
-            << " (every " << keyframe_gap_ << " frames parsed)\033[0m");
+        if(use_keyframe_gap_) {
+            ROS_INFO_STREAM("\033[1;32m Total " << sequence_valid_scan_paths_.size()
+                                                << " nodes are used from the index range [" << start_idx_ << ", " << end_idx_ << "]"
+                                                << " (every " << keyframe_gap_ << " frames parsed)\033[0m");
+        }
     }
 } // parseValidScanInfo
 
@@ -135,9 +147,11 @@ void Removerter::parseValidScanInfo( void )
 void Removerter::readValidScans( void )
 // for target range of scan idx 
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     const int cout_interval {10};
     int cout_counter {0};
 
+    scans_.reserve(sequence_valid_scan_paths_.size());
     for(auto& _scan_path : sequence_valid_scan_paths_) 
     {
         // read bin files and save  
@@ -176,6 +190,7 @@ std::pair<cv::Mat, cv::Mat> Removerter::map2RangeImg(const pcl::PointCloud<Point
                       const std::pair<float, float> _fov, /* e.g., [vfov = 50 (upper 25, lower 25), hfov = 360] */
                       const std::pair<int, int> _rimg_size)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     const float kVFOV = _fov.first;
     const float kHFOV = _fov.second;
     
@@ -226,6 +241,7 @@ cv::Mat Removerter::scan2RangeImg(const pcl::PointCloud<PointType>::Ptr& _scan,
                       const std::pair<float, float> _fov, /* e.g., [vfov = 50 (upper 25, lower 25), hfov = 360] */
                       const std::pair<int, int> _rimg_size)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     const float kVFOV = _fov.first;
     const float kHFOV = _fov.second;
     
@@ -276,6 +292,7 @@ void Removerter::mergeScansWithinGlobalCoord(
         const std::vector<Eigen::Matrix4d>& _scans_poses,
         pcl::PointCloud<PointType>::Ptr& _ptcloud_to_save )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // NOTE: _scans must be in local coord
     for(std::size_t scan_idx = 0 ; scan_idx < _scans.size(); scan_idx++)
     {
@@ -313,6 +330,7 @@ void Removerter::octreeDownsampling(const pcl::PointCloud<PointType>::Ptr& _src,
 
 void Removerter::makeGlobalMap( void )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // transform local to global and merging the scans 
     map_global_orig_->clear();
     map_global_curr_->clear();
@@ -355,6 +373,7 @@ void Removerter::makeGlobalMap( void )
 
 void Removerter::transformGlobalMapSubsetToLocal(int _base_scan_idx)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_base_scan_idx);
     
     // global to local (global2local)
@@ -367,6 +386,7 @@ void Removerter::transformGlobalMapSubsetToLocal(int _base_scan_idx)
 
 void Removerter::transformGlobalMapToLocal(int _base_scan_idx)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_base_scan_idx);
     
     // global to local (global2local)
@@ -379,6 +399,7 @@ void Removerter::transformGlobalMapToLocal(int _base_scan_idx)
 
 void Removerter::transformGlobalMapToLocal(int _base_scan_idx, pcl::PointCloud<PointType>::Ptr& _map_local)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_base_scan_idx);
     
     // global to local (global2local)
@@ -393,6 +414,7 @@ void Removerter::transformGlobalMapToLocal(
     const pcl::PointCloud<PointType>::Ptr& _map_global, 
     int _base_scan_idx, pcl::PointCloud<PointType>::Ptr& _map_local)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_base_scan_idx);
     
     // global to local (global2local)
@@ -405,6 +427,7 @@ void Removerter::transformGlobalMapToLocal(
 
 void Removerter::parseMapPointcloudSubsetUsingPtIdx( std::vector<int>& _point_indexes, pcl::PointCloud<PointType>::Ptr& _ptcloud_to_save ) 
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // extractor
     pcl::ExtractIndices<PointType> extractor;
     boost::shared_ptr<std::vector<int>> index_ptr = boost::make_shared<std::vector<int>>(_point_indexes);
@@ -420,6 +443,7 @@ void Removerter::parseMapPointcloudSubsetUsingPtIdx( std::vector<int>& _point_in
 
 void Removerter::parseStaticMapPointcloudUsingPtIdx( std::vector<int>& _point_indexes ) 
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // extractor
     pcl::ExtractIndices<PointType> extractor;
     boost::shared_ptr<std::vector<int>> index_ptr = boost::make_shared<std::vector<int>>(_point_indexes);
@@ -435,6 +459,7 @@ void Removerter::parseStaticMapPointcloudUsingPtIdx( std::vector<int>& _point_in
 
 void Removerter::parseDynamicMapPointcloudUsingPtIdx( std::vector<int>& _point_indexes )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // extractor
     pcl::ExtractIndices<PointType> extractor;
     boost::shared_ptr<std::vector<int>> index_ptr = boost::make_shared<std::vector<int>>(_point_indexes);
@@ -450,6 +475,7 @@ void Removerter::parseDynamicMapPointcloudUsingPtIdx( std::vector<int>& _point_i
 
 void Removerter::saveCurrentStaticAndDynamicPointCloudGlobal( void )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     if( ! kFlagSaveMapPointcloud )
         return;
 
@@ -469,6 +495,7 @@ void Removerter::saveCurrentStaticAndDynamicPointCloudGlobal( void )
 
 void Removerter::saveCurrentStaticAndDynamicPointCloudLocal( int _base_node_idx )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     if( ! kFlagSaveMapPointcloud )
         return;
 
@@ -494,6 +521,7 @@ void Removerter::saveCurrentStaticAndDynamicPointCloudLocal( int _base_node_idx 
 std::vector<int> Removerter::calcDescrepancyAndParseDynamicPointIdx
     (const cv::Mat& _scan_rimg, const cv::Mat& _diff_rimg, const cv::Mat& _map_rimg_ptidx)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     int num_dyna_points {0}; // TODO: tracking the number of dynamic-assigned points and decide when to stop removing (currently just fixed iteration e.g., [2.5, 2.0, 1.5])
 
     std::vector<int> dynamic_point_indexes;
@@ -523,6 +551,7 @@ std::vector<int> Removerter::calcDescrepancyAndParseDynamicPointIdx
 
 void Removerter::takeGlobalMapSubsetWithinBall( int _center_scan_idx )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d center_pose_se3 = scan_poses_.at(_center_scan_idx);
     PointType center_pose;
     center_pose.x = float(center_pose_se3(0, 3));
@@ -537,7 +566,8 @@ void Removerter::takeGlobalMapSubsetWithinBall( int _center_scan_idx )
 
 
 std::vector<int> Removerter::calcDescrepancyAndParseDynamicPointIdxForEachScan( std::pair<int, int> _rimg_shape )
-{   
+{
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     std::vector<int> dynamic_point_indexes;
     // dynamic_point_indexes.reserve(100000);
     for(std::size_t idx_scan=0; idx_scan < scans_.size(); ++idx_scan) {            
@@ -589,6 +619,7 @@ std::vector<int> Removerter::calcDescrepancyAndParseDynamicPointIdxForEachScan( 
 
 std::vector<int> Removerter::getStaticIdxFromDynamicIdx(const std::vector<int>& _dynamic_point_indexes, int _num_all_points)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     std::vector<int> pt_idx_all = linspace<int>(0, _num_all_points, _num_all_points);
 
     std::set<int> pt_idx_all_set (pt_idx_all.begin(), pt_idx_all.end());
@@ -603,6 +634,7 @@ std::vector<int> Removerter::getStaticIdxFromDynamicIdx(const std::vector<int>& 
 
 std::vector<int> Removerter::getGlobalMapStaticIdxFromDynamicIdx(const std::vector<int>& _dynamic_point_indexes)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     int num_all_points = map_global_curr_->points.size();
     return getStaticIdxFromDynamicIdx(_dynamic_point_indexes, num_all_points);
 } // getGlobalMapStaticIdxFromDynamicIdx
@@ -611,6 +643,7 @@ std::vector<int> Removerter::getGlobalMapStaticIdxFromDynamicIdx(const std::vect
 
 void Removerter::saveCurrentStaticMapHistory(void)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // deep copy
     pcl::PointCloud<PointType>::Ptr map_global_curr_static (new pcl::PointCloud<PointType>);
     *map_global_curr_static = *map_global_curr_;  
@@ -622,6 +655,7 @@ void Removerter::saveCurrentStaticMapHistory(void)
 
 void Removerter::removeOnce( float _res_alpha )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // filter spec (i.e., a shape of the range image) 
     curr_res_alpha_ = _res_alpha;
 
@@ -654,6 +688,7 @@ void Removerter::removeOnce( float _res_alpha )
 
 void Removerter::revertOnce( float _res_alpha )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     std::pair<int, int> rimg_shape = resetRimgSize(kFOV, _res_alpha);
     float deg_per_pixel = 1.0 / _res_alpha;    
     ROS_INFO_STREAM("\033[1;32m Reverting starts with resolution: x" << _res_alpha << " (" << deg_per_pixel << " deg/pixel)\033[0m");   
@@ -668,6 +703,7 @@ void Removerter::revertOnce( float _res_alpha )
 void Removerter::parsePointcloudSubsetUsingPtIdx( const pcl::PointCloud<PointType>::Ptr& _ptcloud_orig,
             std::vector<int>& _point_indexes, pcl::PointCloud<PointType>::Ptr& _ptcloud_to_save ) 
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // extractor
     pcl::ExtractIndices<PointType> extractor;
     boost::shared_ptr<std::vector<int>> index_ptr = boost::make_shared<std::vector<int>>(_point_indexes);
@@ -683,6 +719,7 @@ void Removerter::parsePointcloudSubsetUsingPtIdx( const pcl::PointCloud<PointTyp
 
 pcl::PointCloud<PointType>::Ptr Removerter::local2global(const pcl::PointCloud<PointType>::Ptr& _scan_local, int _scan_idx)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     Eigen::Matrix4d scan_pose = scan_poses_.at(_scan_idx);
 
     pcl::PointCloud<PointType>::Ptr scan_global(new pcl::PointCloud<PointType>());
@@ -705,7 +742,8 @@ pcl::PointCloud<PointType>::Ptr Removerter::global2local(const pcl::PointCloud<P
 
 std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> 
     Removerter::removeDynamicPointsOfScanByKnn ( int _scan_idx )
-{    
+{
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // curr scan (in local coord)
     pcl::PointCloud<PointType>::Ptr scan_orig = scans_.at(_scan_idx); 
     auto scan_pose = scan_poses_.at(_scan_idx);
@@ -759,9 +797,17 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr>
 
 void Removerter::saveStaticScan( int _scan_idx, const pcl::PointCloud<PointType>::Ptr& _ptcloud )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
+    std::string file_name_orig;
+    std::string file_name;
 
-    std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
-    std::string file_name = scan_static_save_dir_ + "/" + file_name_orig + ".pcd";
+    if (isDumpHdlGraphSlamFormat_) {
+        file_name_orig = sequence_valid_scan_paths_.at(_scan_idx);
+        file_name = file_name_orig + "_static.pcd";
+    } else {
+        file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
+        file_name = scan_static_save_dir_ + "/" + file_name_orig + ".pcd";
+    }
     ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
     pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveStaticScan
@@ -769,18 +815,30 @@ void Removerter::saveStaticScan( int _scan_idx, const pcl::PointCloud<PointType>
 
 void Removerter::saveDynamicScan( int _scan_idx, const pcl::PointCloud<PointType>::Ptr& _ptcloud )
 {
-    std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
-    std::string file_name = scan_dynamic_save_dir_ + "/" + file_name_orig + ".pcd";
-    ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
+    std::string file_name_orig;
+    std::string file_name;
+
+    if (isDumpHdlGraphSlamFormat_) {
+        file_name_orig = sequence_valid_scan_paths_.at(_scan_idx);
+        file_name = file_name_orig + "_dynamic.pcd";
+    } else {
+        file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
+        file_name = scan_dynamic_save_dir_ + "/" + file_name_orig + ".pcd";
+    }
+    ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s dynamic points is saved (" << file_name << ")\033[0m");
     pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveDynamicScan
 
 
 void Removerter::saveCleanedScans(void)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     if( ! kFlagSaveCleanScans )
         return;
 
+    assert(scans_.size() == scans_static_.size());
+    assert(scans_.size() == scans_dynamic_.size());
     for(std::size_t idx_scan=0; idx_scan < scans_static_.size(); idx_scan++) {  
         saveStaticScan(idx_scan, scans_static_.at(idx_scan));
         saveDynamicScan(idx_scan, scans_dynamic_.at(idx_scan));
@@ -790,8 +848,9 @@ void Removerter::saveCleanedScans(void)
 
 void Removerter::saveMapPointcloudByMergingCleanedScans(void)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // merge for verification
-    if( ! kFlagSaveMapPointcloud ) 
+    if (!kFlagSaveMapPointcloud)
         return;
 
     // static map
@@ -840,6 +899,7 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
 
 void Removerter::scansideRemovalForEachScan( void )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // for fast scan-side neighbor search 
     kdtree_map_global_curr_->setInputCloud(map_global_curr_); 
 
@@ -854,6 +914,7 @@ void Removerter::scansideRemovalForEachScan( void )
 
 void Removerter::scansideRemovalForEachScanAndSaveThem( void )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     scansideRemovalForEachScan();
     saveCleanedScans();
     saveMapPointcloudByMergingCleanedScans();
@@ -862,6 +923,7 @@ void Removerter::scansideRemovalForEachScanAndSaveThem( void )
 
 void Removerter::run( void )
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
     // load scan and poses
     parseValidScanInfo();
     readValidScans();
@@ -887,5 +949,5 @@ void Removerter::run( void )
 
     // scan-side removals
     scansideRemovalForEachScanAndSaveThem();
-
+    ROS_INFO("CLEANING IS FINISHED! Press CTRL+C.");
 }
