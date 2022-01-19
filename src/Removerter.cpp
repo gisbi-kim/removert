@@ -349,15 +349,19 @@ void Removerter::makeGlobalMap( void )
         // in global coord
         std::string static_global_file_name = save_pcd_directory_ + "OriginalNoisyMapGlobal.pcd";
         pcl::io::savePCDFileBinary(static_global_file_name, *map_global_curr_);
-        ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (global coord): " << static_global_file_name << "\033[0m");   
+        ROS_INFO_STREAM(
+                "\033[1;32m The original pointcloud is saved (global coord): " << static_global_file_name << "\033[0m");
 
-        // in local coord (i.e., base_node_idx == 0 means a start idx is the identity pose)
-        int base_node_idx = base_node_idx_;    
-        pcl::PointCloud<PointType>::Ptr map_local_curr (new pcl::PointCloud<PointType>);
-        transformGlobalMapToLocal(map_global_curr_, base_node_idx, map_local_curr);
-        std::string static_local_file_name = save_pcd_directory_ + "OriginalNoisyMapLocal.pcd";
-        pcl::io::savePCDFileBinary(static_local_file_name, *map_local_curr);
-        ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (local coord): " << static_local_file_name << "\033[0m");   
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            // in local coord (i.e., base_node_idx == 0 means a start idx is the identity pose)
+            int base_node_idx = base_node_idx_;
+            pcl::PointCloud<PointType>::Ptr map_local_curr(new pcl::PointCloud<PointType>);
+            transformGlobalMapToLocal(map_global_curr_, base_node_idx, map_local_curr);
+            std::string static_local_file_name = save_pcd_directory_ + "OriginalNoisyMapLocal.pcd";
+            pcl::io::savePCDFileBinary(static_local_file_name, *map_local_curr);
+            ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (local coord): " << static_local_file_name
+                                                                                          << "\033[0m");
+        }
     }
     // make tree (for fast ball search for the projection to make a map range image later)
     // if(kUseSubsetMapCloud) // NOT recommend to use for under 5 million points map input
@@ -731,6 +735,9 @@ pcl::PointCloud<PointType>::Ptr Removerter::local2global(const pcl::PointCloud<P
 
 pcl::PointCloud<PointType>::Ptr Removerter::global2local(const pcl::PointCloud<PointType>::Ptr& _scan_global, int _scan_idx)
 {
+    ROS_DEBUG("%s", __PRETTY_FUNCTION__ );
+    if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity())
+        return _scan_global;
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_scan_idx);
     
     pcl::PointCloud<PointType>::Ptr scan_local(new pcl::PointCloud<PointType>());
@@ -865,13 +872,18 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         pcl::io::savePCDFileBinary(local_file_name, *map_global_static_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
-        // local 
-        pcl::PointCloud<PointType>::Ptr map_local_static_scans_merged_to_verify (new pcl::PointCloud<PointType>);
-        int base_node_idx = base_node_idx_;
-        transformGlobalMapToLocal(map_global_static_scans_merged_to_verify, base_node_idx, map_local_static_scans_merged_to_verify);
-        std::string global_file_name = map_static_save_dir_ + "/StaticMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileBinary(global_file_name, *map_local_static_scans_merged_to_verify);
-        ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
+        // local
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            pcl::PointCloud<PointType>::Ptr map_local_static_scans_merged_to_verify(new pcl::PointCloud<PointType>);
+            int base_node_idx = base_node_idx_;
+            transformGlobalMapToLocal(map_global_static_scans_merged_to_verify, base_node_idx,
+                                      map_local_static_scans_merged_to_verify);
+            std::string global_file_name = map_static_save_dir_ + "/StaticMapScansideMapLocal.pcd";
+            pcl::io::savePCDFileBinary(global_file_name, *map_local_static_scans_merged_to_verify);
+            ROS_INFO_STREAM(
+                    "\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (local coord): "
+                            << global_file_name << "\033[0m");
+        }
     } 
 
     // dynamic map
@@ -886,13 +898,18 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         pcl::io::savePCDFileBinary(local_file_name, *map_global_dynamic_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
-        // local 
-        pcl::PointCloud<PointType>::Ptr map_local_dynamic_scans_merged_to_verify (new pcl::PointCloud<PointType>);
-        int base_node_idx = base_node_idx_;
-        transformGlobalMapToLocal(map_global_dynamic_scans_merged_to_verify, base_node_idx, map_local_dynamic_scans_merged_to_verify);
-        std::string global_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileBinary(global_file_name, *map_local_dynamic_scans_merged_to_verify);
-        ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
+        // local
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            pcl::PointCloud<PointType>::Ptr map_local_dynamic_scans_merged_to_verify(new pcl::PointCloud<PointType>);
+            int base_node_idx = base_node_idx_;
+            transformGlobalMapToLocal(map_global_dynamic_scans_merged_to_verify, base_node_idx,
+                                      map_local_dynamic_scans_merged_to_verify);
+            std::string global_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapLocal.pcd";
+            pcl::io::savePCDFileBinary(global_file_name, *map_local_dynamic_scans_merged_to_verify);
+            ROS_INFO_STREAM(
+                    "\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (local coord): "
+                            << global_file_name << "\033[0m");
+        }
     } 
 } // saveMapPointcloudByMergingCleanedScans
 
@@ -938,7 +955,8 @@ void Removerter::run( void )
 
     // if you want to every iteration's map data, place below two lines to inside of the above for loop 
     saveCurrentStaticAndDynamicPointCloudGlobal(); // if you want to save within the global points uncomment this line
-    saveCurrentStaticAndDynamicPointCloudLocal(base_node_idx_); // w.r.t specific node's coord. 0 means w.r.t the start node, as an Identity.
+    if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity())
+        saveCurrentStaticAndDynamicPointCloudLocal(base_node_idx_); // w.r.t specific node's coord. 0 means w.r.t the start node, as an Identity.
 
     // TODO
     // map-side reverts
