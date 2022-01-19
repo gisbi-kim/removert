@@ -312,15 +312,16 @@ void Removerter::mergeScansWithinGlobalCoord(
 
 void Removerter::octreeDownsampling(const pcl::PointCloud<PointType>::Ptr& _src, pcl::PointCloud<PointType>::Ptr& _to_save)
 {
+    ROS_WARN("%s", __PRETTY_FUNCTION__ );
     pcl::octree::OctreePointCloudVoxelCentroid<PointType> octree( kDownsampleVoxelSize );
     octree.setInputCloud(_src);
     octree.defineBoundingBox();
     octree.addPointsFromInputCloud();
-    pcl::octree::OctreePointCloudVoxelCentroid<PointType>::AlignedPointTVector centroids;
-    octree.getVoxelCentroids(centroids);
+    octree.getVoxelCentroids(_to_save->points);
 
-    // init current map with the downsampled full cloud 
-    _to_save->points.assign(centroids.begin(), centroids.end());    
+    ROS_DEBUG("Octree done.");
+
+    // init current map with the downsampled full cloud
     _to_save->width = 1; 
     _to_save->height = _to_save->points.size(); // make sure again the format of the downsampled point cloud 
     ROS_INFO_STREAM("\033[1;32m Downsampled pointcloud have: " << _to_save->points.size() << " points.\033[0m");   
