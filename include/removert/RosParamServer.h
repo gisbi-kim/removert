@@ -32,6 +32,7 @@ public:
 
     // sequence bin files
     bool isScanFileKITTIFormat_;
+    bool isDumpHdlGraphSlamFormat_;
 
     std::string sequence_scan_dir_;
     std::vector<std::string> sequence_scan_names_;
