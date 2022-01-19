@@ -126,3 +126,33 @@ float pointDistance(PointType p1, PointType p2)
     return sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
 }
 
+Eigen::Matrix4d readPose(const std::string& filename) {
+    int col = 0;
+    double buff[16];
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string line;
+        // Skip the two first lines
+        for (int i = 0; i < 2; i++)
+            file.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+        // Read matrix
+        for (int row = 0; getline(file, line) && row < 4; ++row) {
+            std::stringstream stream(line);
+            int temp_col = 0;
+            while(! stream.eof())
+                stream >> buff[col*row+temp_col++];
+            if (col == 0)
+                col = temp_col;
+        }
+    } else {
+        ROS_ERROR("Wrong file path");
+    }
+    file.close();
+    // Populate matrix with numbers
+    Eigen::Matrix4d matrix(4, 4);
+    for (int i = 0; i < 4; i++)
+        for (int j = 0; j < 4; j++)
+            matrix(i, j) = buff[col * i + j];
+    return matrix;
+}
+
