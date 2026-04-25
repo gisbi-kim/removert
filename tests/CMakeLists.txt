@@ -6,6 +6,7 @@ add_executable(removert_tests
     test_pipeline_synthetic.cpp
     test_config_loader.cpp
     test_pcd_writer.cpp
+    test_parity.cpp
 )
 target_link_libraries(removert_tests
     PRIVATE removert::core removert::io GTest::gtest GTest::gtest_main)
