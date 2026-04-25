@@ -330,6 +330,74 @@ global map ~15M pts).
 - cuVS KNN의 15 s는 4,500 query 배치 + 12k pts/query 가정. 배치가 작으면 더 길어질 수 있음.
 - **실측은 P0에서 v1 베이스라인 측정, P7 완료 시점에 본 표 갱신**.
 
+### 4.8 알고리즘 강화: 통합 Visibility 모델 (no MOS)
+
+**문제 의식**. 도시 시퀀스에서 자주 보이는 *moving object의 누적 블롭* (예: 같은
+차로에 수십 프레임에 걸쳐 쌓인 차량 흔적)은 보통 **MOS (Moving Object
+Segmentation) → fine cleaning** 의 2단 파이프라인으로 처리된다. 그러나
+여러 알고리즘을 직렬로 붙이면 의존성·튜닝 면이 늘고 SRP 헌장과도 맞지 않는다.
+
+**가설**. 누적 블롭은 visibility 원리의 한계가 아니라 **v1 visibility 모델이 약한**
+탓이다. 모델을 강화하면 단일 visibility 파이프라인만으로 흡수된다.
+
+#### v1 visibility의 세 약점
+
+| # | 약점 | 결과 |
+|---|------|------|
+| W1 | 픽셀당 map nearest **1점만** 비교 | 같은 방향에 여러 layer로 쌓인 동적점 중 1개만 검출 |
+| W2 | "뒤에 있나?"만 판정, **자유 광선 통과 증거 미사용** | 광선이 통과한 모든 map 점에 누적 가능한 증거를 버림 |
+| W3 | per-scan binary 라벨 + 정수 카운트 (`n_SM`/`n_DM`) | 시간 누적 증거가 약하고 hand-tuned 가중치 (`α_SM=0.3, α_DM=−0.7, τ_S=−0.1`)에 민감 |
+
+#### 강화 모델 (3종 결합)
+
+| 강화 | 수학 | 효과 |
+|------|------|------|
+| **A1: Multi-hit (depth peeling)** | 픽셀당 top-K nearest map 점 유지 (K=4~8) | 누적 layer 동시 테스트, W1 해소 |
+| **A2: Free-segment ray carving** | 광선 (origin → query hit) 사이 모든 map 점에 "자유" 증거 += 1 | "통과" 정보 활용, W2 해소 |
+| **A3: Log-odds 시간 누적** | `ℓ(p) ← ℓ(p) + log(p_obs/(1−p_obs))` per 관측 | 정적 prior 강하게, 카브 100회 누적 시 자연 제거. `α/τ_S` 매직 넘버 폐기 |
+
+이 세 가지를 결합하면, 본질적으로 **range-image 도메인에서 작동하는 GPU
+occupancy grid**가 된다 (수학적으로 voxel ray-tracing과 동치, 그러나 센서 네이티브
+좌표를 유지하므로 GPU 효율 우수).
+
+#### MOS 대비 장단
+
+| | 강화 visibility (단일) | MOS + visibility (복합) |
+|---|---|---|
+| 정확도 (누적 블롭) | log-odds 누적이 충분히 카브 | MOS가 큰 덩어리 빠르게 제거, 잔여는 비슷 |
+| 정확도 (희소 동적) | 동등 | MOS가 약함 (학습 도메인 밖) |
+| 알고리즘 복잡도 | **1개** (visibility) | 2개 (MOS + visibility) + 인터페이스 |
+| 학습 의존성 | 없음 | 있음 (도메인 의존) |
+| GPU 적합성 | 융합 커널 1개 | 두 파이프라인 각각 |
+| SRP 헌장 부합 | ✅ | ✗ |
+
+**채택: 강화 visibility 단일 경로.**
+
+#### 남는 한계 (visibility 원리상 풀 수 없음)
+
+- **dynamic이 dynamic을 영구 가림** (예: 거대 트럭이 모든 시점에서 자전거 무리를
+  가리는 경우) — MOS도 못 풀고, 추적/사전지식이 필요. v2 범위 외.
+- **transient occlusion FP** (지나가는 차가 잠깐 가린 건물 점이 잘못 카브됨) —
+  log-odds prior를 정적 쪽으로 강하게 (예: `ℓ_prior = +2.0`) 잡으면 1~2회 카브로는
+  플립되지 않음. 해소.
+- **정적이 정적을 영구 가림** — 사실 문제 아님 (가려진 정적점은 그대로 둬도 됨).
+
+#### v2 구현 영향
+
+- **§4.2의 융합 커널이 자연스럽게 흡수**: projection 시 픽셀당 top-K min을
+  `cuda::atomic_ref<float>` + small-K register sort로 한 번에 수집.
+  Free-segment carving은 같은 패스에서 ray-march 없이 `range < I_query`인 모든
+  map 픽셀에 atomic add 1줄 추가.
+- **메모리**: K=4 기준 range image 메모리 4배. KITTI에서 4 × 1 MB × 5 res = 20 MB,
+  8 GB 예산 내 무시 가능.
+- **Config 추가**: `KnnConfig` 옆에 `VisibilityConfig { int top_k; float
+  log_odds_prior; float log_odds_carve; float log_odds_hit; float decision_thr; }`.
+  v1의 `α_SM, α_DM, τ_S, τ_D, τ_S_thr` 전부 흡수·치환.
+- **Phase 영향**: 본 강화는 P3 (CPU 레퍼런스) 단계부터 도입. P3에서 정확성 검증,
+  P6 융합 커널 작성 시 동일 모델로 GPU 포팅. 새 phase 추가 없음.
+- **회귀 비교**: v1과 출력이 다르므로 P0 골든 픽스처는 *동등하지 않음*. 대신
+  SemanticKITTI 라벨 기준 TP/FP/FN 지표로 비교 — v1보다 **나아야** 통과.
+
 ---
 
 ## 5. 마이그레이션 단계 (Phase Plan)
@@ -341,9 +409,9 @@ global map ~15M pts).
 | **P0** | 베이스라인 캡처 | v1 출력 PCD를 골든 픽스처로 저장 | 회귀 비교 스크립트 작동 |
 | **P1** | `core/` 스켈레톤 + `Config` + `types.hpp` | 빌드만 통과 | `libremovert_core.a` 생성 |
 | **P2** | `io/` 모듈 (BIN/PCD/포즈 로더) 분리 | KITTI 로더가 ROS 없이 동작 | 단위 테스트 통과 |
-| **P3** | `core/` CPU 레퍼런스 구현 (Remove 경로) | CLI에서 v1과 동일 출력 | 픽셀 단위 일치 |
+| **P3** | `core/` CPU 레퍼런스 구현 (강화 visibility: multi-hit + ray carving + log-odds, §4.8) | CLI에서 SemanticKITTI 지표상 v1 ≥ | TP↑, FP/FN↓ |
 | **P4** | `app/ros1/` 어댑터 (얇게) | ROS launch가 v1처럼 작동 | 사용자 호환성 유지 |
-| **P5** | Revert 단계 완성 (v1의 TODO 해소) | Revert 함수 + 테스트 | 정성 평가 |
+| **P5** | Revert 단계 = log-odds prior 조정으로 흡수 (v1 TODO 해소) | Revert 함수 + 테스트 | 정성 평가 |
 | **P6** | `gpu/` projection+diff 융합 커널 (raw CUDA + libcudacxx) | 단일 핫스팟 30× 달성 | 벤치 통과 |
 | **P7** | cuVS KNN + Thrust downsample/transform 통합 | 엔드투엔드 30× 달성 | 8GB 이내, 30× 이상 |
 | **P8** | 실시간 콜백 (스트리밍 모드) | `cloudHandler` 완성 | 30 Hz 라이브 |
@@ -369,7 +437,9 @@ global map ~15M pts).
 - **단위**: 각 순수 함수에 대해 GoogleTest. `core/`는 라인 커버리지 95% 목표.
 - **속성 기반**: range image projection은 round-trip 테스트
   (project → unproject → 동일 픽셀 복원).
-- **회귀**: KITTI 00의 처음 200 스캔으로 골든 PCD 비교 (chamfer < ε).
+- **회귀**:
+  - KITTI 00 처음 200 스캔 — 강화 visibility 적용으로 v1과 출력 다름 → SemanticKITTI 라벨 기준 **TP/FP/FN 지표가 v1 이상**이어야 통과.
+  - 동일 입력 + 동일 Config → 동일 출력 (결정성 회귀).
 - **벤치**: Google Benchmark.
   - `BM_project_cpu`, `BM_project_gpu`, `BM_pipeline_end_to_end`
   - CI에서 v1 대비 30× 미만 시 실패.
