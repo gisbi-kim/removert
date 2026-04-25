@@ -2,6 +2,7 @@ add_executable(removert_tests
     test_geometry.cpp
     test_range_image.cpp
     test_visibility.cpp
+    test_revert.cpp
     test_pipeline_synthetic.cpp
     test_config_loader.cpp
     test_pcd_writer.cpp
