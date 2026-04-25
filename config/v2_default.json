@@ -1,0 +1,49 @@
+{
+  "sensor": {
+    "vfov_deg": 50.0,
+    "hfov_deg": 360.0
+  },
+  "remove": {
+    "resolutions_deg": [1.0, 0.5, 0.25],
+    "diff_carve_m": 0.5,
+    "diff_hit_m":   0.4,
+    "visibility": {
+      "top_k":          4,
+      "log_odds_prior": 2.0,
+      "log_odds_carve": -0.4,
+      "log_odds_hit":   0.85,
+      "decision_thr":   0.0,
+      "log_odds_min":  -8.0,
+      "log_odds_max":   8.0
+    }
+  },
+  "revert": {
+    "resolutions_deg": [0.25, 0.5, 1.0],
+    "diff_carve_m": 0.6,
+    "diff_hit_m":   0.4,
+    "visibility": {
+      "top_k":          4,
+      "log_odds_prior": 3.0,
+      "log_odds_carve": -0.2,
+      "log_odds_hit":   1.0,
+      "decision_thr":   0.0,
+      "log_odds_min":  -8.0,
+      "log_odds_max":   8.0
+    }
+  },
+  "knn": {
+    "k": 6,
+    "radius_m": 0.5,
+    "scan_map_avg_diff_thr": 0.10
+  },
+  "downsample": {
+    "voxel_size_m": 0.05
+  },
+  "start_idx": 0,
+  "end_idx": -1,
+  "keyframe_gap": 1,
+  "use_gpu": false,
+  "output_dir": "./removert_out",
+  "write_pcd":  true,
+  "write_hdf5": false
+}
