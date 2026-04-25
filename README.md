@@ -1,5 +1,39 @@
 # *Removert*
 
+> **v2 (in progress):** a pure-C++17 offline batch redesign with a strengthened
+> visibility model (multi-hit + ray carving + log-odds) and ROS-free I/O. See
+> [`docs/v2-plan.md`](docs/v2-plan.md) and the [Quickstart (v2)](#quickstart-v2).
+> The v1 ROS workflow below still works against the legacy build files
+> (`CMakeLists.legacy.txt` / `package.legacy.xml`).
+
+## Quickstart (v2)
+
+```bash
+# Configure + build (no ROS, no PCL, no CUDA required for the CPU path).
+cmake -B build -DREMOVERT_BUILD_GPU=OFF
+cmake --build build -j
+
+# Run the unit tests (23 cases, ~0.2s).
+cmake --build build --target test
+
+# Run on a KITTI-style directory (velodyne/*.bin + poses.txt + calib.txt).
+build/app/cli/removert_cli \
+    --dataset kitti \
+    --input  /path/to/seq01 \
+    --config config/v2_default.json \
+    --output-dir /tmp/removert_out
+
+# Or on the SQLite extract built by tools/build_seq01_sqlite.py.
+build/app/cli/removert_cli \
+    --dataset sqlite \
+    --input  data/seq01.sqlite \
+    --output-dir /tmp/removert_out
+```
+
+Build options (CMake):
+`REMOVERT_BUILD_GPU` (default OFF), `REMOVERT_WITH_HDF5` (ON), `REMOVERT_WITH_SQLITE`
+(ON), `REMOVERT_BUILD_TESTS` (ON), `REMOVERT_BUILD_BENCH` (OFF).
+
 ## What is removert?
 - Static map construction in the wild. 
 - A dynamic points removing tool by constructing a static map
