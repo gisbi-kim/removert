@@ -1,10 +1,14 @@
 # gpu/ — CUDA + cuVS backends. Compiled only when REMOVERT_BUILD_GPU=ON.
 #
-# This is a SKELETON — the real fused projection / cuVS KNN kernels are
-# scheduled for P5/P6. We currently provide:
-#   * CMake plumbing that reliably finds CUDA + cuVS,
-#   * compile-time stubs that satisfy core/'s IRangeImageBackend / IKnnBackend
-#     interface (TODO comments mark the actual algorithm sites).
+# Contents:
+#   * src/projection.cu  — fused fill_inf + scan-projection + visibility-update
+#                          kernels using libcudacxx cuda::atomic_ref (plan §4.2).
+#   * src/knn_gpu.cpp    — cuvs::neighbors::brute_force build/search wrapper,
+#                          with a CPU partial_sort fallback when cuvs is absent.
+#
+# Both code paths are written but not yet GPU-tested (see TODO(local-test)
+# comments in the sources).  CPU-only builds (REMOVERT_BUILD_GPU=OFF) ignore
+# this directory entirely.
 
 find_package(CUDAToolkit 12.6 REQUIRED)
 # cuVS is RAPIDS, often a conda install. Soft-fail to a meaningful message.

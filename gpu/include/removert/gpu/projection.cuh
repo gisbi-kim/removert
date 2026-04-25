@@ -1,7 +1,12 @@
-// Fused projection + carving + diff CUDA kernel (plan §4.2).
+// Fused projection + carving + diff CUDA kernel (plan §4.2 / §4.8).
 //
-// SKELETON. Real implementation lands in P5. Interface is finalized so
-// callers can be wired today.
+// Implementation in projection.cu launches three kernels on the same stream:
+// a +inf fill of the scratch scan range image, a per-scan-point projection
+// with libcudacxx atomic-min, then a per-map-point visibility update that
+// classifies each map point as { hit | carve | nothing } against the scan
+// range image and accumulates clamped log-odds.
+//
+// TODO(local-test): not yet exercised on real GPU hardware. See PR #34.
 
 #pragma once
 

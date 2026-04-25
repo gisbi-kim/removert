@@ -1,4 +1,9 @@
-// cuVS-backed brute-force KNN (plan §4.4).  SKELETON for P6.
+// cuVS-backed brute-force KNN (plan §4.4 / §4.7).
+//
+// When linked against cuvs 24.10+ the implementation calls
+// cuvs::neighbors::brute_force::{build, search} on a raft::device_resources
+// stream. Otherwise a CPU partial_sort fallback is used so the function is
+// always callable. TODO(local-test): cuVS path not yet GPU-tested.
 
 #pragma once
 
