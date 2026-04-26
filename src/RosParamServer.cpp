@@ -5,6 +5,7 @@ RosParamServer::RosParamServer()
 : nh(nh_super), ROSimg_transporter_(nh)
 {
     nh.param<bool>("removert/isScanFileKITTIFormat", isScanFileKITTIFormat_, true);
+    nh.param<bool>("removert/isDumpHdlGraphSlamFormat", isDumpHdlGraphSlamFormat_, false);
 
     // for visualization 
  
@@ -32,14 +33,72 @@ RosParamServer::RosParamServer()
     kSE3MatExtrinsicLiDARtoPoseBase = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(kVecExtrinsicLiDARtoPoseBase.data(), 4, 4);
     kSE3MatExtrinsicPoseBasetoLiDAR = kSE3MatExtrinsicLiDARtoPoseBase.inverse();
 
-    // parsing bin file paths 
     nh.param<std::string>("removert/sequence_scan_dir", sequence_scan_dir_, "/use/your/directory/having/*.bin");
-    for(auto& _entry : fs::directory_iterator(sequence_scan_dir_)) {
-        sequence_scan_names_.emplace_back(_entry.path().filename());
-        sequence_scan_paths_.emplace_back(_entry.path());
+    nh.param<std::string>("removert/sequence_pose_path", sequence_pose_path_, "/use/your/path/having/pose.txt");
+
+    if (isDumpHdlGraphSlamFormat_) {
+        std::vector<fs::path> sequence_paths;
+        if(fs::is_directory(sequence_scan_dir_)) {
+            std::copy_if(fs::directory_iterator(sequence_scan_dir_), fs::directory_iterator(),
+                         std::back_inserter(sequence_paths),
+                         [](const fs::path& p) {return is_directory(p);});
+            std::sort(std::begin(sequence_paths), std::end(sequence_paths));
+        } else {
+            ROS_ERROR("Directory not found");
+        }
+
+        auto amount_of_scans = sequence_paths.size();
+        sequence_scan_paths_.reserve(amount_of_scans);
+        sequence_scan_poses_.reserve(amount_of_scans);
+        sequence_scan_inverse_poses_.reserve(amount_of_scans);
+
+        sequence_scan_names_.assign(amount_of_scans, "cloud.pcd");
+        for (const auto &_entry: sequence_paths) {
+            auto str_path = _entry.u8string();
+            sequence_scan_paths_.emplace_back(str_path + "/cloud.pcd");
+            Eigen::Matrix4d ith_pose = readPose(str_path + "/data");
+            sequence_scan_poses_.emplace_back(ith_pose);
+            sequence_scan_inverse_poses_.emplace_back(ith_pose.inverse());
+        }
+        ROS_WARN("%s", sequence_scan_paths_.front().c_str());
+        ROS_WARN("%s", sequence_scan_paths_.back().c_str());
+    } else {
+        // parsing bin file paths
+        for (auto &_entry: fs::directory_iterator(sequence_scan_dir_)) {
+            sequence_scan_names_.emplace_back(_entry.path().filename());
+            sequence_scan_paths_.emplace_back(_entry.path());
+        }
+
+        // parsing pose info
+        std::ifstream pose_file_handle(sequence_pose_path_);
+        int num_poses{0};
+        std::string strOneLine;
+        while (getline(pose_file_handle, strOneLine)) {
+            // str to vec
+            std::vector<double> ith_pose_vec = splitPoseLine(strOneLine, ' ');
+            if (ith_pose_vec.size() == 12) {
+                ith_pose_vec.emplace_back(double(0.0));
+                ith_pose_vec.emplace_back(double(0.0));
+                ith_pose_vec.emplace_back(double(0.0));
+                ith_pose_vec.emplace_back(double(1.0));
+            }
+
+            // vec to eig
+            Eigen::Matrix4d ith_pose = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(
+                    ith_pose_vec.data(), 4, 4);
+            Eigen::Matrix4d ith_pose_inverse = ith_pose.inverse();
+
+            // save (move)
+            // cout << "Pose of scan: " << sequence_scan_names_.at(num_poses) << endl;
+            // cout << ith_pose << endl;
+            sequence_scan_poses_.emplace_back(ith_pose);
+            sequence_scan_inverse_poses_.emplace_back(ith_pose_inverse);
+
+            num_poses++;
+        }
+        std::sort(sequence_scan_names_.begin(), sequence_scan_names_.end());
+        std::sort(sequence_scan_paths_.begin(), sequence_scan_paths_.end());
     }
-    std::sort(sequence_scan_names_.begin(), sequence_scan_names_.end());
-    std::sort(sequence_scan_paths_.begin(), sequence_scan_paths_.end());
 
     num_total_scans_of_sequence_ = sequence_scan_paths_.size();
     ROS_INFO_STREAM("\033[1;32m Total : " << num_total_scans_of_sequence_ << " scans in the directory.\033[0m");
@@ -47,34 +106,6 @@ RosParamServer::RosParamServer()
     // point cloud pre-processing
     nh.param<float>("removert/downsample_voxel_size", kDownsampleVoxelSize, 0.05);
 
-    // parsing pose info
-    nh.param<std::string>("removert/sequence_pose_path", sequence_pose_path_, "/use/your/path/having/pose.txt");
-    std::ifstream pose_file_handle (sequence_pose_path_);
-    int num_poses {0};
-    std::string strOneLine;
-    while (getline(pose_file_handle, strOneLine)) 
-    {
-        // str to vec
-        std::vector<double> ith_pose_vec = splitPoseLine(strOneLine, ' ');
-        if(ith_pose_vec.size() == 12) {
-            ith_pose_vec.emplace_back(double(0.0)); 
-            ith_pose_vec.emplace_back(double(0.0)); 
-            ith_pose_vec.emplace_back(double(0.0)); 
-            ith_pose_vec.emplace_back(double(1.0));
-        }
-    
-        // vec to eig
-        Eigen::Matrix4d ith_pose = Eigen::Map<const Eigen::Matrix<double, -1, -1, Eigen::RowMajor>>(ith_pose_vec.data(), 4, 4);
-        Eigen::Matrix4d ith_pose_inverse = ith_pose.inverse();
-
-        // save (move)
-        // cout << "Pose of scan: " << sequence_scan_names_.at(num_poses) << endl;
-        // cout << ith_pose << endl;
-        sequence_scan_poses_.emplace_back(ith_pose);
-        sequence_scan_inverse_poses_.emplace_back(ith_pose_inverse);
-
-        num_poses++;
-    }
     // check the number of scans and the number of poses are equivalent
     assert(sequence_scan_paths_.size() == sequence_scan_poses_.size());
 

@@ -32,11 +32,14 @@ Removerter::Removerter()
     nh.param<int>("removert/num_nn_points_within", kNumKnnPointsToCompare, 3); // using higher, more strict static 
     nh.param<float>("removert/dist_nn_points_within", kScanKnnAndMapKnnAvgDiffThreshold, 0.1); // using smaller, more strict static 
 
-    if( save_pcd_directory_.substr(save_pcd_directory_.size()-1, 1) != std::string("/") )
+    if (save_pcd_directory_.back() != '/')
         save_pcd_directory_ = save_pcd_directory_ + "/";
+
     fsmkdir(save_pcd_directory_);
-    scan_static_save_dir_ = save_pcd_directory_ + "scan_static"; fsmkdir(scan_static_save_dir_);
-    scan_dynamic_save_dir_ = save_pcd_directory_ + "scan_dynamic"; fsmkdir(scan_dynamic_save_dir_);
+    if (!isDumpHdlGraphSlamFormat_) {
+        scan_static_save_dir_ = save_pcd_directory_ + "scan_static"; fsmkdir(scan_static_save_dir_);
+        scan_dynamic_save_dir_ = save_pcd_directory_ + "scan_dynamic"; fsmkdir(scan_dynamic_save_dir_);
+    }
     map_static_save_dir_ = save_pcd_directory_ + "map_static"; fsmkdir(map_static_save_dir_);
     map_dynamic_save_dir_ = save_pcd_directory_ + "map_dynamic"; fsmkdir(map_dynamic_save_dir_);
 
@@ -89,45 +92,52 @@ Removerter::~Removerter(){}
 
 void Removerter::parseValidScanInfo( void )
 {
-    int num_valid_parsed {0};
-    float movement_counter {0.0}; 
+    if (isDumpHdlGraphSlamFormat_) {
+        sequence_valid_scan_paths_ = sequence_scan_paths_;
+        sequence_valid_scan_names_ = sequence_scan_names_;
+        scan_poses_ = sequence_scan_poses_; // used for local2global
+        scan_inverse_poses_ = sequence_scan_inverse_poses_; // used for global2local
+    } else {
+        int num_valid_parsed {0};
+        float movement_counter {0.0};
 
-    for(int curr_idx=0; curr_idx < int(sequence_scan_paths_.size()); curr_idx++) 
-    {
-        // check the scan idx within the target idx range 
-        if(curr_idx > end_idx_ || curr_idx < start_idx_) {
-            curr_idx++;
-            continue;
-        }
-
-        // check enough movement occured (e.g., parse every 2m)
-        if(use_keyframe_gap_) {
-            if( remainder(num_valid_parsed, keyframe_gap_) != 0 ) {
-                num_valid_parsed++;
+        for(int curr_idx=0; curr_idx < int(sequence_scan_paths_.size()); curr_idx++)
+        {
+            // check the scan idx within the target idx range
+            if(curr_idx > end_idx_ || curr_idx < start_idx_) {
+                curr_idx++;
                 continue;
             }
-        }
-        if(use_keyframe_meter_) {
-            if( 0 /*TODO*/ ) {
-                // TODO using movement_counter
+
+            // check enough movement occured (e.g., parse every 2m)
+            if(use_keyframe_gap_) {
+                if( remainder(num_valid_parsed, keyframe_gap_) != 0 ) {
+                    num_valid_parsed++;
+                    continue;
+                }
             }
+            if(use_keyframe_meter_) {
+                if( 0 /*TODO*/ ) {
+                    // TODO using movement_counter
+                }
+            }
+
+            // save the info (reading scan bin is in makeGlobalMap)
+            sequence_valid_scan_paths_.emplace_back(sequence_scan_paths_.at(curr_idx));
+            sequence_valid_scan_names_.emplace_back(sequence_scan_names_.at(curr_idx));
+
+            scan_poses_.emplace_back(sequence_scan_poses_.at(curr_idx)); // used for local2global
+            scan_inverse_poses_.emplace_back(sequence_scan_inverse_poses_.at(curr_idx)); // used for global2local
+
+            //
+            num_valid_parsed++;
         }
 
-        // save the info (reading scan bin is in makeGlobalMap) 
-        sequence_valid_scan_paths_.emplace_back(sequence_scan_paths_.at(curr_idx));
-        sequence_valid_scan_names_.emplace_back(sequence_scan_names_.at(curr_idx));
-
-        scan_poses_.emplace_back(sequence_scan_poses_.at(curr_idx)); // used for local2global
-        scan_inverse_poses_.emplace_back(sequence_scan_inverse_poses_.at(curr_idx)); // used for global2local
-
-        // 
-        num_valid_parsed++;
-    }
-
-    if(use_keyframe_gap_) {
-        ROS_INFO_STREAM("\033[1;32m Total " << sequence_valid_scan_paths_.size()
-            << " nodes are used from the index range [" << start_idx_ << ", " << end_idx_ << "]" 
-            << " (every " << keyframe_gap_ << " frames parsed)\033[0m");
+        if(use_keyframe_gap_) {
+            ROS_INFO_STREAM("\033[1;32m Total " << sequence_valid_scan_paths_.size()
+                                                << " nodes are used from the index range [" << start_idx_ << ", " << end_idx_ << "]"
+                                                << " (every " << keyframe_gap_ << " frames parsed)\033[0m");
+        }
     }
 } // parseValidScanInfo
 
@@ -138,6 +148,7 @@ void Removerter::readValidScans( void )
     const int cout_interval {10};
     int cout_counter {0};
 
+    scans_.reserve(sequence_valid_scan_paths_.size());
     for(auto& _scan_path : sequence_valid_scan_paths_) 
     {
         // read bin files and save  
@@ -295,15 +306,16 @@ void Removerter::mergeScansWithinGlobalCoord(
 
 void Removerter::octreeDownsampling(const pcl::PointCloud<PointType>::Ptr& _src, pcl::PointCloud<PointType>::Ptr& _to_save)
 {
+    ROS_WARN("%s", __PRETTY_FUNCTION__ );
     pcl::octree::OctreePointCloudVoxelCentroid<PointType> octree( kDownsampleVoxelSize );
     octree.setInputCloud(_src);
     octree.defineBoundingBox();
     octree.addPointsFromInputCloud();
-    pcl::octree::OctreePointCloudVoxelCentroid<PointType>::AlignedPointTVector centroids;
-    octree.getVoxelCentroids(centroids);
+    octree.getVoxelCentroids(_to_save->points);
 
-    // init current map with the downsampled full cloud 
-    _to_save->points.assign(centroids.begin(), centroids.end());    
+    ROS_DEBUG("Octree done.");
+
+    // init current map with the downsampled full cloud
     _to_save->width = 1; 
     _to_save->height = _to_save->points.size(); // make sure again the format of the downsampled point cloud 
     ROS_INFO_STREAM("\033[1;32m Downsampled pointcloud have: " << _to_save->points.size() << " points.\033[0m");   
@@ -331,15 +343,19 @@ void Removerter::makeGlobalMap( void )
         // in global coord
         std::string static_global_file_name = save_pcd_directory_ + "OriginalNoisyMapGlobal.pcd";
         pcl::io::savePCDFileBinary(static_global_file_name, *map_global_curr_);
-        ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (global coord): " << static_global_file_name << "\033[0m");   
+        ROS_INFO_STREAM(
+                "\033[1;32m The original pointcloud is saved (global coord): " << static_global_file_name << "\033[0m");
 
-        // in local coord (i.e., base_node_idx == 0 means a start idx is the identity pose)
-        int base_node_idx = base_node_idx_;    
-        pcl::PointCloud<PointType>::Ptr map_local_curr (new pcl::PointCloud<PointType>);
-        transformGlobalMapToLocal(map_global_curr_, base_node_idx, map_local_curr);
-        std::string static_local_file_name = save_pcd_directory_ + "OriginalNoisyMapLocal.pcd";
-        pcl::io::savePCDFileBinary(static_local_file_name, *map_local_curr);
-        ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (local coord): " << static_local_file_name << "\033[0m");   
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            // in local coord (i.e., base_node_idx == 0 means a start idx is the identity pose)
+            int base_node_idx = base_node_idx_;
+            pcl::PointCloud<PointType>::Ptr map_local_curr(new pcl::PointCloud<PointType>);
+            transformGlobalMapToLocal(map_global_curr_, base_node_idx, map_local_curr);
+            std::string static_local_file_name = save_pcd_directory_ + "OriginalNoisyMapLocal.pcd";
+            pcl::io::savePCDFileBinary(static_local_file_name, *map_local_curr);
+            ROS_INFO_STREAM("\033[1;32m The original pointcloud is saved (local coord): " << static_local_file_name
+                                                                                          << "\033[0m");
+        }
     }
     // make tree (for fast ball search for the projection to make a map range image later)
     // if(kUseSubsetMapCloud) // NOT recommend to use for under 5 million points map input
@@ -537,7 +553,7 @@ void Removerter::takeGlobalMapSubsetWithinBall( int _center_scan_idx )
 
 
 std::vector<int> Removerter::calcDescrepancyAndParseDynamicPointIdxForEachScan( std::pair<int, int> _rimg_shape )
-{   
+{
     std::vector<int> dynamic_point_indexes;
     // dynamic_point_indexes.reserve(100000);
     for(std::size_t idx_scan=0; idx_scan < scans_.size(); ++idx_scan) {            
@@ -694,6 +710,8 @@ pcl::PointCloud<PointType>::Ptr Removerter::local2global(const pcl::PointCloud<P
 
 pcl::PointCloud<PointType>::Ptr Removerter::global2local(const pcl::PointCloud<PointType>::Ptr& _scan_global, int _scan_idx)
 {
+    if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity())
+        return _scan_global;
     Eigen::Matrix4d base_pose_inverse = scan_inverse_poses_.at(_scan_idx);
     
     pcl::PointCloud<PointType>::Ptr scan_local(new pcl::PointCloud<PointType>());
@@ -705,7 +723,7 @@ pcl::PointCloud<PointType>::Ptr Removerter::global2local(const pcl::PointCloud<P
 
 std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr> 
     Removerter::removeDynamicPointsOfScanByKnn ( int _scan_idx )
-{    
+{
     // curr scan (in local coord)
     pcl::PointCloud<PointType>::Ptr scan_orig = scans_.at(_scan_idx); 
     auto scan_pose = scan_poses_.at(_scan_idx);
@@ -759,9 +777,16 @@ std::pair<pcl::PointCloud<PointType>::Ptr, pcl::PointCloud<PointType>::Ptr>
 
 void Removerter::saveStaticScan( int _scan_idx, const pcl::PointCloud<PointType>::Ptr& _ptcloud )
 {
+    std::string file_name_orig;
+    std::string file_name;
 
-    std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
-    std::string file_name = scan_static_save_dir_ + "/" + file_name_orig + ".pcd";
+    if (isDumpHdlGraphSlamFormat_) {
+        file_name_orig = sequence_valid_scan_paths_.at(_scan_idx);
+        file_name = file_name_orig + "_static.pcd";
+    } else {
+        file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
+        file_name = scan_static_save_dir_ + "/" + file_name_orig + ".pcd";
+    }
     ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
     pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveStaticScan
@@ -769,9 +794,17 @@ void Removerter::saveStaticScan( int _scan_idx, const pcl::PointCloud<PointType>
 
 void Removerter::saveDynamicScan( int _scan_idx, const pcl::PointCloud<PointType>::Ptr& _ptcloud )
 {
-    std::string file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
-    std::string file_name = scan_dynamic_save_dir_ + "/" + file_name_orig + ".pcd";
-    ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s static points is saved (" << file_name << ")\033[0m");   
+    std::string file_name_orig;
+    std::string file_name;
+
+    if (isDumpHdlGraphSlamFormat_) {
+        file_name_orig = sequence_valid_scan_paths_.at(_scan_idx);
+        file_name = file_name_orig + "_dynamic.pcd";
+    } else {
+        file_name_orig = sequence_valid_scan_names_.at(_scan_idx);
+        file_name = scan_dynamic_save_dir_ + "/" + file_name_orig + ".pcd";
+    }
+    ROS_INFO_STREAM("\033[1;32m Scan " << _scan_idx << "'s dynamic points is saved (" << file_name << ")\033[0m");
     pcl::io::savePCDFileBinary(file_name, *_ptcloud);
 } // saveDynamicScan
 
@@ -781,6 +814,8 @@ void Removerter::saveCleanedScans(void)
     if( ! kFlagSaveCleanScans )
         return;
 
+    assert(scans_.size() == scans_static_.size());
+    assert(scans_.size() == scans_dynamic_.size());
     for(std::size_t idx_scan=0; idx_scan < scans_static_.size(); idx_scan++) {  
         saveStaticScan(idx_scan, scans_static_.at(idx_scan));
         saveDynamicScan(idx_scan, scans_dynamic_.at(idx_scan));
@@ -791,7 +826,7 @@ void Removerter::saveCleanedScans(void)
 void Removerter::saveMapPointcloudByMergingCleanedScans(void)
 {
     // merge for verification
-    if( ! kFlagSaveMapPointcloud ) 
+    if (!kFlagSaveMapPointcloud)
         return;
 
     // static map
@@ -806,13 +841,18 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         pcl::io::savePCDFileBinary(local_file_name, *map_global_static_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
-        // local 
-        pcl::PointCloud<PointType>::Ptr map_local_static_scans_merged_to_verify (new pcl::PointCloud<PointType>);
-        int base_node_idx = base_node_idx_;
-        transformGlobalMapToLocal(map_global_static_scans_merged_to_verify, base_node_idx, map_local_static_scans_merged_to_verify);
-        std::string global_file_name = map_static_save_dir_ + "/StaticMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileBinary(global_file_name, *map_local_static_scans_merged_to_verify);
-        ROS_INFO_STREAM("\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
+        // local
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            pcl::PointCloud<PointType>::Ptr map_local_static_scans_merged_to_verify(new pcl::PointCloud<PointType>);
+            int base_node_idx = base_node_idx_;
+            transformGlobalMapToLocal(map_global_static_scans_merged_to_verify, base_node_idx,
+                                      map_local_static_scans_merged_to_verify);
+            std::string global_file_name = map_static_save_dir_ + "/StaticMapScansideMapLocal.pcd";
+            pcl::io::savePCDFileBinary(global_file_name, *map_local_static_scans_merged_to_verify);
+            ROS_INFO_STREAM(
+                    "\033[1;32m  [For verification] A static pointcloud (cleaned scans merged) is saved (local coord): "
+                            << global_file_name << "\033[0m");
+        }
     } 
 
     // dynamic map
@@ -827,13 +867,18 @@ void Removerter::saveMapPointcloudByMergingCleanedScans(void)
         pcl::io::savePCDFileBinary(local_file_name, *map_global_dynamic_scans_merged_to_verify);
         ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (global coord): " << local_file_name << "\033[0m");   
 
-        // local 
-        pcl::PointCloud<PointType>::Ptr map_local_dynamic_scans_merged_to_verify (new pcl::PointCloud<PointType>);
-        int base_node_idx = base_node_idx_;
-        transformGlobalMapToLocal(map_global_dynamic_scans_merged_to_verify, base_node_idx, map_local_dynamic_scans_merged_to_verify);
-        std::string global_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapLocal.pcd";
-        pcl::io::savePCDFileBinary(global_file_name, *map_local_dynamic_scans_merged_to_verify);
-        ROS_INFO_STREAM("\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (local coord): " << global_file_name << "\033[0m");  
+        // local
+        if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity()) {
+            pcl::PointCloud<PointType>::Ptr map_local_dynamic_scans_merged_to_verify(new pcl::PointCloud<PointType>);
+            int base_node_idx = base_node_idx_;
+            transformGlobalMapToLocal(map_global_dynamic_scans_merged_to_verify, base_node_idx,
+                                      map_local_dynamic_scans_merged_to_verify);
+            std::string global_file_name = map_dynamic_save_dir_ + "/DynamicMapScansideMapLocal.pcd";
+            pcl::io::savePCDFileBinary(global_file_name, *map_local_dynamic_scans_merged_to_verify);
+            ROS_INFO_STREAM(
+                    "\033[1;32m  [For verification] A dynamic pointcloud (cleaned scans merged) is saved (local coord): "
+                            << global_file_name << "\033[0m");
+        }
     } 
 } // saveMapPointcloudByMergingCleanedScans
 
@@ -876,7 +921,8 @@ void Removerter::run( void )
 
     // if you want to every iteration's map data, place below two lines to inside of the above for loop 
     saveCurrentStaticAndDynamicPointCloudGlobal(); // if you want to save within the global points uncomment this line
-    saveCurrentStaticAndDynamicPointCloudLocal(base_node_idx_); // w.r.t specific node's coord. 0 means w.r.t the start node, as an Identity.
+    if (kSE3MatExtrinsicPoseBasetoLiDAR != Eigen::Matrix4d::Identity())
+        saveCurrentStaticAndDynamicPointCloudLocal(base_node_idx_); // w.r.t specific node's coord. 0 means w.r.t the start node, as an Identity.
 
     // TODO
     // map-side reverts
@@ -887,5 +933,5 @@ void Removerter::run( void )
 
     // scan-side removals
     scansideRemovalForEachScanAndSaveThem();
-
+    ROS_INFO("CLEANING IS FINISHED! Press CTRL+C.");
 }
